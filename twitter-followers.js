@@ -79,7 +79,6 @@ function update_user_info(new_users)
 					"screen_name": user.screen_name,
 					"name": user.name,
 					"follower_count": user.followers_count,
-					"you_follow": user.following,
 				};
 			});
 		},
@@ -162,7 +161,9 @@ function score_tweet(d, user)
 	div.setAttribute("follower_count", follower_count);
 	div.setAttribute("score", score);
 	div.appendChild(document.createTextNode(
-		" (" + follower_count + " followers, " + score + " score)"
+		" (" + follower_count + " followers, "
+			+ you_follow + "/" + follows_you
+			+ ", score " + score + ")"
 	));
 
 	// find the header to add this to
