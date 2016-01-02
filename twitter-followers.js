@@ -42,125 +42,163 @@
 var user_url = "https://cdn.syndication.twimg.com/widgets/followbutton/info.json?user_ids=";
 
 // track a per-user id set of information about the user
-// fields: follower_count, join_date, follows_you, you_follow
+// fields: follower_count, join_date
 var user_info = {};
 
 function block(d)
 {
 	//d.style.display = "none";
 	d.style.background = "#000";
-	blocked++;
 }
 
-function update_user_info(d, user_id, name, cb)
+
+function mute(d)
 {
-	// we might have raced with another update,
-	// so only add this element if we haven't done so
-	if (name.getElementsByClassName("user-info").length != 0)
+	d.style.background = "#888";
+}
+
+
+// Update the user info for a list of user ids
+// this uses the follow-button URL to be able to extract the
+// follower count without an API key. should perhaps fetch the
+// user id page instead
+function update_user_info(new_users)
+{
+	if (new_users.length == 0)
 		return;
 
-	var follower_count = user_info[user_id].follower_count;
-	//name.style.background = "#f00";
+	GM_xmlhttpRequest({
+		method: "GET",
+		url: user_url + new_users.join(","),
+		onload: function(xhr) {
+			// is there a better way to turn json into structs?
+			var data = eval("(" + xhr.responseText + ")");
 
+			data.forEach(function(user) {
+				user_info[user.id] = {
+					"screen_name": user.screen_name,
+					"name": user.name,
+					"follower_count": user.followers_count,
+					"you_follow": user.following,
+				};
+			});
+		},
+	});
+}
+
+// Attempt to extract the uid from a stream-item
+// there is probably a better way to do this
+function get_uid(d)
+{
+	// skip things that aren't tweets or mentions
+	var type = d.getAttribute("data-component-context");
+	if (!type)
+		return null;
+	if (type !== "favorited_mention_activity"
+	&&  type !== "retweeted_mention_activity"
+	&&  type !== "quote_activity"
+	&&  type !== "reply_activity"
+	&&  type !== "mention_activity"
+	)
+		return null;
+
+	var match = /data-user-id="([0-9]+)"/.exec(d.innerHTML);
+	if (!match)
+		return null;
+	return match[1];
+}
+
+
+function score_tweet(d, user)
+{
+	// if we have already scored this, don't do it again
+	if (d.getElementsByClassName("user-info").length !== 0)
+		return;
+
+	// extract the list of mentions and follow state
+	var h = d.innerHTML;
+	var match;
+
+	var mentions = [];
+	var you_follow = false;
+	var follows_you = false;
+
+	match = /data-mentions="(.*?)"/.exec(h);
+	if (match)
+		mentions = match[1].split(" ");
+
+	match = /data-you-follow="(.*?)"/.exec(h);
+	if (match)
+		you_follow = match[1] == "true";
+
+	match = /data-follows-you="(.*?)"/.exec(h);
+	if (match)
+		follows_you = match[1] == "true";
+
+	var follower_count = user.follower_count;
+
+	// score it!
+	var score = 0;
+	if (follower_count < 10)
+		score += 5;
+	if (follower_count < 20)
+		score += 5;
+	if (!follows_you)
+		score += 2;
+
+	// todo: walk list of mentions to see if anyone you block
+	// is mentioned. this would be a red flag and worth many points
+	//
+	// todo: retrieve join date from profile page.
+
+	// white list anyone you follow
+	if (you_follow)
+		score = 0;
+	
+
+	// add the user info field
 	var div = document.createElement("span");
 	div.setAttribute("class", "user-info");
 	div.setAttribute("follower_count", follower_count);
-	div.appendChild(document.createTextNode(" (" + follower_count + " followers)"));
+	div.setAttribute("score", score);
+	div.appendChild(document.createTextNode(
+		" (" + follower_count + " followers, " + score + " score)"
+	));
 
-	name.appendChild(div);
+	// find the header to add this to
+	var headers = d.getElementsByClassName("stream-item-activity-header");
+	if (headers.length === 0)
+		headers = d.getElementsByClassName("stream-item-header");
+	if (headers.length !== 0)
+		headers[0].appendChild(div);
+	
 
-	//cb(d, user_info[user_id]);
-}
-
-
-function add_user_info(d, cb)
-{
-	// do a query to add follower count to this tweet
-	var n = d.getElementsByClassName("username");
-	if (n.length === 0)
-		return;
-	var name = n[0];
-
-	// if we have already created the user-info field, ignore this one
-	if (name.getElementsByClassName("user-info").length != 0)
-		return;
-
-	var match = /data-user-id="(.*?)"/.exec(d.innerHTML);
-	if (!match)
-		return;
-	var user_id = match[1];
-
-	//name.style.background = "#00f";
-	if (user_id in user_info)
-	{
-		update_user_info(d, user_id, name, cb);
-		return;
-	}
-
-	//name.style.background = "#111";
-
-	// we don't already have it. send a request for info
-	GM_xmlhttpRequest({
-		method: "GET",
-		url: user_url + user_id,
-		onload: function(xhr) {
-			//var data = eval("(" + xhr.responseText + ")");
-			var rsp = xhr.responseText;
-			var follower_count = /"followers_count":([0-9]+)/.exec(rsp);
-			if (!follower_count)
-				return;
-
-			user_info[user_id] = {
-				"follower_count": follower_count[1],
-				"follows_you": true,
-				"you_follow": true,
-				"join_date": 0,
-			};
-			update_user_info(d, user_id, name, cb);
-		},
-	});
+	if (score > 10)
+		block(d);
+	else
+	if (score > 6)
+		mute(d);
 }
 
 
 window.setInterval(function() {
 	var stream = document.getElementsByClassName("stream-item");
 	var blocked = 0;
+
+	// walk all of the stream and build the user info database
+	var new_users = [];
 	for(var i = 0 ; i < stream.length ; i++)
 	{
 		var d = stream[i];
-
-		//d.style.background = "#aaa";
-		add_user_info(d, function(){} ); // add_score;
+		var uid = get_uid(d);
+		if (!uid)
+			continue;
+		if (uid in user_info)
+			score_tweet(d, user_info[uid]);
+		else
+			new_users.push(uid);
 	}
+
+	// retrieve all of the new user id data
+	update_user_info(new_users);
 }, 5000);
-
-/*
-            var you_follow = /data-you-follow="(.*?)"/.exec(h);
-            var follows_you = /data-follows-you="(.*?)"/.exec(h);
-            var mentions = /data-mentions="(.*?)"/.exec(h);
-            var follower_count = /follower-count="(.*?)"/.exec(h);
-            if (mentions)
-                mentions = mentions[1].split(" ");
-
-            // todo: black list of mentions
-            // todo: black list of posters
-
-            // always show people you follow
-            if (you_follow && you_follow[1] == "true")
-                continue;
-
-            // hide people who don't follow you
-            if (follows_you && follows_you[1] == "false")
-                block(d);
-
-            // add follower count
-            if (follower_count || !user_id)
-                continue;
-
-
-            // hide anyone who has less than N followers
-
-        }
-
-    }, 5000);
-*/
