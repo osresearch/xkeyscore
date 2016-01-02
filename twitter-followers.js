@@ -38,8 +38,6 @@
 // @grant       unsafeWindow
 // ==/UserScript==
 
-// We use the follower button to find out stats about the user.
-var user_url = "https://cdn.syndication.twimg.com/widgets/followbutton/info.json?user_ids=";
 
 // track a per-user id set of information about the user
 // fields: follower_count, join_date
@@ -58,6 +56,71 @@ function mute(d)
 }
 
 
+function parse_profile(d, t)
+{
+	var join_date = '';
+	var follower_count = '';
+	var screen_name = '';
+	var e;
+
+/*
+	e = d.getElementsByClassName("ProfileHeaderCard-screennameLink");
+	if (e.length !== 0)
+	{
+		e = e[0].getElementsByClassName("u-linkComplex-target");
+		if (e.length !== 0)
+			screen_name = e.innerHTML;
+	}
+
+	unsafeWindow.parsed.push(screen_name);
+
+	// find the join date and follower count
+	var e = d.getElementsByClassName("ProfileHeaderCard-joinDateText");
+	if (e.length !== 0)
+		join_date = e[0].getAttribute("data-original-title");
+
+	e = d.getElementsByClassName("ProfileNav-item--followers");
+	if (e.length !== 0)
+	{
+		e = e[0].getElementsByClassName("ProfileNav-value");
+		if (e.length !== 0)
+			follower_count = e[0].innerHTML;
+	}
+*/
+	e = d.getElementsByClassName("json-data");
+	if (e.length === 0)
+		return;
+
+	var j = /class="json-data" value="(.*?)"/.exec(t);
+	if (!j)
+		return;
+	
+	var txt = document.createElement("textarea");
+    	txt.innerHTML = j[1];
+	var json = eval( "(" + txt.value + ")" );
+	unsafeWindow.rx = json;
+
+	var user = json.profile_user;
+	var created_at = Date.parse(user.created_at);
+
+	user_info[user.screen_name] = {
+		"id": user.id,
+		"name": user.name,
+		"created_at": created_at,
+		"age": new Date() - created_at,
+		"screen_name": user.screen_name,
+		"created_at": Date.parse(user.created_at),
+		"followers_count": user.followers_count,
+		"friends_count": user.friends_count,
+		"listed_count": user.listed_count,
+		"verified": user.verified,
+		"statuses_count": user.statuses_count,
+		"favourites_count": user.favourites_count,
+		"has_extended_profile": user.has_extended_profile,
+	};
+}
+
+
 // Update the user info for a list of user ids
 // this uses the follow-button URL to be able to extract the
 // follower count without an API key. should perhaps fetch the
@@ -67,6 +130,9 @@ function update_user_info(new_users)
 	if (new_users.length == 0)
 		return;
 
+/*
+	// We can use the follower button to find out stats about the user.
+	var user_url = "https://cdn.syndication.twimg.com/widgets/followbutton/info.json?user_ids=";
 	GM_xmlhttpRequest({
 		method: "GET",
 		url: user_url + new_users.join(","),
@@ -82,6 +148,22 @@ function update_user_info(new_users)
 				};
 			});
 		},
+	});
+*/
+
+	var user_url = "https://twitter.com/"
+	new_users.forEach(function(user) {
+		GM_xmlhttpRequest({
+			method: "GET",
+			url: user_url + user,
+			onload: function(xhr) {
+				var div = document.createElement("div");
+				div.innerHTML = xhr.responseText;
+
+				parse_profile(div, xhr.responseText);
+			},
+		});
+		
 	});
 }
 
@@ -101,7 +183,7 @@ function get_uid(d)
 	)
 		return null;
 
-	var match = /data-user-id="([0-9]+)"/.exec(d.innerHTML);
+	var match = /data-screen-name="(.*?)"/.exec(d.innerHTML);
 	if (!match)
 		return null;
 	return match[1];
@@ -134,7 +216,8 @@ function score_tweet(d, user)
 	if (match)
 		follows_you = match[1] == "true";
 
-	var follower_count = user.follower_count;
+	var follower_count = user.followers_count;
+	var age = user.age / (24 * 60 * 60 * 1000); // days
 
 	// score it!
 	var score = 0;
@@ -144,6 +227,15 @@ function score_tweet(d, user)
 		score += 5;
 	if (!follows_you)
 		score += 2;
+	if (age < 30)
+		score += 5;
+	if (age > 365)
+		score -= 2;
+
+	if (user.listed_count > 10)
+		score -= 1;
+	if (user.verified)
+		score -= 10;
 
 	// todo: walk list of mentions to see if anyone you block
 	// is mentioned. this would be a red flag and worth many points
@@ -153,8 +245,16 @@ function score_tweet(d, user)
 	// white list anyone you follow
 	if (you_follow)
 		score = 0;
-	
 
+	// translate age into something
+	if (age > 365)
+		age = Math.floor(age/365) + " years";
+	else
+	if (age > 30)
+		age = Math.floor(age/30) + " months";
+	else
+		age = Math.floor(age) + " days";
+	
 	// add the user info field
 	var div = document.createElement("span");
 	div.setAttribute("class", "user-info");
@@ -162,8 +262,10 @@ function score_tweet(d, user)
 	div.setAttribute("score", score);
 	div.appendChild(document.createTextNode(
 		" (" + follower_count + " followers, "
-			+ you_follow + "/" + follows_you
-			+ ", score " + score + ")"
+			+ you_follow + "/" + follows_you + ", "
+			+ age + ", "
+			+ "score " + score
+		+ ")"
 	));
 
 	// find the header to add this to
@@ -182,6 +284,10 @@ function score_tweet(d, user)
 }
 
 
+unsafeWindow.users = user_info;
+unsafeWindow.parsed = [];
+unsafeWindow.rx = '';
+
 window.setInterval(function() {
 	var stream = document.getElementsByClassName("stream-item");
 	var blocked = 0;
@@ -194,6 +300,7 @@ window.setInterval(function() {
 		var uid = get_uid(d);
 		if (!uid)
 			continue;
+
 		if (uid in user_info)
 			score_tweet(d, user_info[uid]);
 		else
