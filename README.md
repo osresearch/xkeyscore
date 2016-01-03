@@ -1,14 +1,15 @@
 Twitter XKeyScore
 ===
 
-This is a **very beta** [https://en.wikipedia.org/wiki/Greasemonkey](userscript)
+This is a **very beta** [userscript](https://en.wikipedia.org/wiki/Greasemonkey)
 that works as a Chrome extension to score and filter your Twitter
 notification feed.  It allows you to mute or remove notifications
 from "low scoring tweets", as well as highlighting ones from friends
 or that meet your own criteria.
 
-!(https://farm6.staticflickr.com/5623/23696720549_3e6f8bb41a_z_d.jpg)[32c3 talk]
-It was inspired by a talk at 32c3 in which Caroline Sinders pointed
+![32c3 talk](https://farm6.staticflickr.com/5623/23696720549_3e6f8bb41a_z_d.jpg)
+
+It was inspired by a talk at 32c3 in which [Caroline Sinders](https://twitter.com/carolinesinders) pointed
 out that there are two classes of Twitter users: the verified users
 who have good tools for filtering their notification stream, and
 the rest of us who are innundated with low-quality notifications.
