@@ -23,12 +23,12 @@
  */
 // ==UserScript==
 // @name        Twitter hide non-followers
-// @namespace   https://github.com/osresearch/UserScripts
+// @namespace   https://github.com/osresearch/Twitter-XKeyScore
 // @description Hide tweets by non-followers
 // @author      hudson
 // @copyright   2015+, Trammell Hudson (https://trmm.net/)
 // @license     GNU GPLv2
-// @homepage    https://trmm.net/UserScript
+// @homepage    https://trmm.net/Twitter-XKeyScore
 // @include     *://twitter.com/i/notifications
 // @exclude     *://twitter.com/
 // @exclude     *://twitter.com
