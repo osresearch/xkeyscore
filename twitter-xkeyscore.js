@@ -11,14 +11,15 @@
  * - Use blacklisted terms
  * - Follows blacklisted individuals
  *
- * This adds a score to each tweet, based on this criteria and allows ones that
- * score higher than some value to be hidden or muted.
+ * This assigns a score to each tweet, based on these criteria and
+ * allows ones that score lower than some value to be hidden or muted.
  *
  * Additional desirable features:
  * - "Block all" to do a bulk block on high-scoring accounts
  * - Integration with other block lists
  * - Retweets of tweets that mention you but otherwise meet the criteria can be blocked.
  * - Favorites of tweets that mention you can be blocked
+ * - Local storage for terms, cache and scoring
  *
  */
 // ==UserScript==
@@ -220,22 +221,27 @@ function score_tweet(d, user)
 	var age = user.age / (24 * 60 * 60 * 1000); // days
 
 	// score it!
+	// high scores are good.
 	var score = 0;
 	if (follower_count < 10)
-		score += 5;
+		score -= 5;
 	if (follower_count < 20)
-		score += 5;
+		score -= 5;
 	if (!follows_you)
-		score += 2;
-	if (age < 30)
-		score += 5;
-	if (age > 365)
 		score -= 2;
+	if (age < 10)
+		score -= 5;
+	if (age < 20)
+		score -= 5;
+	if (age < 30)
+		score -= 5;
+	if (age > 365)
+		score += 2;
 
 	if (user.listed_count > 10)
-		score -= 1;
+		score += 1;
 	if (user.verified)
-		score -= 10;
+		score += 10;
 
 	// todo: walk list of mentions to see if anyone you block
 	// is mentioned. this would be a red flag and worth many points
@@ -262,7 +268,7 @@ function score_tweet(d, user)
 	div.setAttribute("score", score);
 	div.appendChild(document.createTextNode(
 		" (" + follower_count + " followers, "
-			+ you_follow + "/" + follows_you + ", "
+			//+ you_follow + "/" + follows_you + ", "
 			+ age + ", "
 			+ "score " + score
 		+ ")"
@@ -276,10 +282,10 @@ function score_tweet(d, user)
 		headers[0].appendChild(div);
 	
 
-	if (score > 10)
+	if (score < -10)
 		block(d);
 	else
-	if (score > 6)
+	if (score < -5)
 		mute(d);
 }
 
